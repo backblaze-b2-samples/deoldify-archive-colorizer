@@ -1,0 +1,31 @@
+# Heavy ML dependencies for DeOldify colorization — kept separate from the
+# core API deps so the API stays light. Install AFTER requirements.txt:
+#
+#   pip install -r requirements.txt
+#   pip install -r requirements-ml.txt
+#
+# Everything is PINNED on purpose. Unpinned torch/fastai/huggingface is a
+# classic false-green: the API boots and the test suite passes, but the model
+# load fails on a fresh clone. The window below is known to load DeOldify's
+# NoGAN weights.
+#
+# torch >= 2.x flips torch.load to weights_only=True, which refuses DeOldify's
+# legacy pickled .pth checkpoints — app/repo/deoldify_repo.py patches torch.load
+# to weights_only=False (and registers safe globals) before each model load to
+# work around that.
+#
+# DeOldify is not a cleanly-maintained PyPI package, so we vendor it from a
+# pinned git ref of the upstream repo.
+
+torch>=2.2.0,<2.4.0
+torchvision>=0.17.0,<0.19.0
+fastai>=2.7.0,<2.8.0
+huggingface_hub>=0.20.0,<0.24.0
+opencv-python-headless>=4.9.0,<4.11.0
+imageio-ffmpeg>=0.5.0,<0.6.0
+numpy>=1.26.0,<2.0.0
+scipy>=1.11.0,<1.14.0
+
+# DeOldify itself — pinned git ref (NoGAN colorizer). Provides the `deoldify`
+# package imported only inside app/repo/.
+deoldify @ git+https://github.com/jantic/DeOldify.git@e8a5b819b0731a82f9c0b035bba5d09e35c69ad5
