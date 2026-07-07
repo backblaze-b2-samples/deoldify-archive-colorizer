@@ -5,6 +5,28 @@ Restore and colorize black-and-white historical footage with **[DeOldify](https:
 
 Everything heavy runs on-device using open-source models. There is **no second API key**: B2 credentials only.
 
+## What it looks like
+
+**Dashboard** — archival data-growth metrics (assets restored, originals vs restored bytes, data-growth multiple) with an originals-vs-restored storage chart and recent restorations.
+
+![Dashboard with archival data-growth metrics and storage-growth chart](docs/images/dashboard.png)
+
+**Restoration Library** — the gallery scoped to `archive/restored/`, each card pairing the original B&W master with its colorized rendition.
+
+![Restoration library gallery of original-vs-restored pairs](docs/images/restorations-library.png)
+
+**Restoration detail** — side-by-side original-vs-restored compare plus full provenance (source key, model, variant, render factor, restore pass, device).
+
+![Restoration detail with side-by-side compare and provenance](docs/images/restoration-detail.png)
+
+**New Restoration** — pick an ingested B&W master, choose the DeOldify model variant and render quality, then toggle the denoise/sharpen restore pass.
+
+![New restoration form with model-variant and render-quality controls](docs/images/new-restoration.png)
+
+**Ingest** — drag-and-drop upload of black-and-white archival masters into `archive/originals/`.
+
+![Ingest upload page for black-and-white archival masters](docs/images/ingest.png)
+
 ## The data-doubling story
 
 An archival digitization team ingests scanned B&W frames or clips into B2 under `archive/originals/`, runs DeOldify's NoGAN colorizer on each asset, applies an optional denoise/sharpen restore pass, and writes a full-color restored rendition plus a provenance metadata JSON to `archive/restored/<asset_id>/`. **Both** the original master and every restored variant are retained in B2 as authoritative archival objects.
