@@ -17,10 +17,13 @@ restorations in Backblaze B2. The primary entity is the `Restoration`.
 - **services/api/** — FastAPI backend (layered architecture)
   - REST API for the Restoration lifecycle + file upload/listing/deletion
   - B2 S3 integration via boto3
-  - DeOldify colorization via the `repo/deoldify_repo.py` adapter (local, no API key)
+  - DeOldify colorization delegated over HTTP to the `infra/deoldify/` container via the `repo/deoldify_repo.py` adapter (no API key)
   - Optional denoise/sharpen restore pass (Pillow)
   - File metadata extraction (images, PDFs)
   - Health check, structured JSON logging, Prometheus-format metrics
+- **infra/deoldify/** — DeOldify colorization microservice (FastAPI, CPU)
+  - Runs the legacy fastai-v1/torch-1.11 stack, isolated in a native `linux/arm64` container
+  - `POST /colorize` (image bytes → colorized PNG) and `GET /health`; stateless, no B2
 - **packages/shared/** — TypeScript type definitions
   - Mirrors Pydantic models from the API (incl. `Restoration`, `RestorationStats`)
   - Consumed by `apps/web/` as workspace dependency
@@ -45,7 +48,7 @@ runtime/   FastAPI routes — calls service, never repo directly
 
 1. Dependencies flow downward only: `types` -> `config` -> `repo` -> `service` -> `runtime`
 2. No backward imports (e.g., service must not import from runtime)
-3. `boto3` **and** the DeOldify model stack (`deoldify`, `torch`, `torchvision`, `fastai`, `cv2`, `imageio_ffmpeg`) are only allowed in the `repo/` layer — same containment invariant for storage SDK and model SDK
+3. `boto3` is only allowed in the `repo/` layer. The DeOldify model stack (`deoldify`, `torch`, `torchvision`, `fastai`, `imageio_ffmpeg`) is imported **nowhere** in this API — it runs in the `infra/deoldify/` container and the repo adapter reaches it over HTTP
 4. All boundary data uses Pydantic models (no raw dicts across layers)
 5. Each file stays under 300 lines
 
@@ -56,31 +59,33 @@ services/api/
   main.py                  App entrypoint, middleware, router registration
   app/
     types/                 Pydantic models (Restoration, RestorationStats, FileMetadata, ...)
-    config/                Settings (B2_* env, archive prefixes, model dir); endpoint from region
-    repo/                  B2 S3 client + DeOldify adapter (data/model access layer)
+    config/                Settings (B2_* env, archive prefixes, deoldify_service_url); endpoint from region
+    repo/                  B2 S3 client + DeOldify HTTP adapter (data/model access layer)
       b2_client.py           boto3 client (custom UA, region->endpoint), object I/O
-      deoldify_repo.py       DeOldify adapter — only place deoldify/torch/fastai import
-      deoldify_runtime.py    Heavy model invocation + imageio-ffmpeg MP4 encode (lazy import)
+      deoldify_repo.py       DeOldify adapter — httpx client to the colorizer container (no ML imports)
     service/               Business logic (restoration lifecycle, restore pass, upload, files)
     runtime/               FastAPI route handlers (restorations, files, upload, health, metrics)
-  requirements-ml.txt      PINNED DeOldify/torch/fastai stack (separate from core requirements)
   tests/                   pytest tests (structural + integration + deoldify guard)
+infra/deoldify/            Colorization microservice: Dockerfile, server.py, requirements.txt
 ```
 
 ## Boundary Invariants
 
-- **No external SDK leakage**: `boto3` and the DeOldify model stack (`deoldify`, `torch`, `fastai`, `cv2`, `imageio_ffmpeg`) are only imported in `app/repo/`. All other layers interact with B2 and the model through the repo interface. The DeOldify adapter defers its heavy imports into functions so importing it stays cheap and network-free (verified by `tests/test_deoldify_repo.py`).
-- **Local model, device auto-detect**: colorization runs on-device. The device helper picks CUDA → Apple MPS → CPU and defaults to CPU; never hard-requires a GPU. DeOldify's MPS support is weak, so MPS is best-effort and falls back CUDA → CPU.
+- **No external SDK leakage**: `boto3` is only imported in `app/repo/`. The DeOldify model stack (`deoldify`, `torch`, `fastai`, `imageio_ffmpeg`) is imported **nowhere** in this API — it lives only in the `infra/deoldify/` container. The repo adapter reaches it over HTTP (`httpx`) and pulls in no ML SDK (verified by `tests/test_structure.py::test_deoldify_stack_not_imported_anywhere` and `tests/test_deoldify_repo.py`).
+- **Colorization on CPU in-container**: colorization runs on CPU in the container (no GPU passthrough; DeOldify's legacy stack has no usable MPS path). `detect_device` reports the container's device via its `/health` probe and never hard-requires a GPU — if the service is unreachable it still reports CPU rather than raising.
 - **No raw dicts at boundaries**: All data crossing layer boundaries uses typed Pydantic models.
 - **No mutable globals**: Configuration is read-only after init. No module-level mutable state shared between layers.
 - **Validated inputs**: All HTTP inputs validated by FastAPI/Pydantic. All file keys validated against prefix allowlist.
 
 ## Deployment
 
-- **Local dev** — `pnpm dev` runs both services via `concurrently`
+- **Local dev** — `pnpm dev` runs three processes via `concurrently`
   - Web: `localhost:3000`
-  - API: `localhost:8000`
-- **Railway** — two services from the same repo
+  - API (host uvicorn): `localhost:8000`
+  - DeOldify colorizer (Docker, `docker compose up --build deoldify`): `localhost:8137`
+  - Requires a running Docker daemon (Colima on macOS); `scripts/dev.sh` prechecks it
+- **Railway** — the web + API services from the same repo; the colorization service
+  deploys from `infra/deoldify/` as its own `linux/arm64` container, reachable via `DEOLDIFY_SERVICE_URL`
   - See `infra/railway/README.md` for configuration
 
 ## Data Stores
@@ -96,7 +101,7 @@ services/api/
 ## External Services
 
 - **Backblaze B2 S3 API** — storage, retrieval, deletion, presigned URLs (custom UA `deoldify-archive-colorizer`)
-- **DeOldify (local model)** — NoGAN colorization; runs on-device, no external API key. Weights download on first run into a gitignored `models/` dir.
+- **DeOldify colorization service** (`infra/deoldify/`) — NoGAN colorization over HTTP; no external API key. Runs the legacy fastai-v1/torch-1.11 stack on CPU in a native `linux/arm64` container. Model weights + resnet backbones are baked into the image at build time (no runtime download). Stateless and credential-free (never touches B2).
 
 ## Trust Boundaries
 
@@ -109,7 +114,7 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 ## Data Flows
 
 - **Ingest**: Browser -> `POST /upload` (multipart) -> API validates -> repo writes to `archive/originals/` -> metadata extracted -> response
-- **Create restoration**: Browser -> `POST /restorations` -> service fetches the source bytes from B2 (`get_object`) -> `deoldify_repo.colorize_image_bytes` colorizes locally -> optional restore pass -> repo writes `restored.png` + `metadata.json` to `archive/restored/<asset_id>/` -> Restoration returned
+- **Create restoration**: Browser -> `POST /restorations` -> service fetches the source bytes from B2 (`get_object`) -> `deoldify_repo.colorize_image_bytes` POSTs them to the `infra/deoldify/` container (`POST /colorize`) which returns the colorized PNG -> optional restore pass (Pillow, in-API) -> repo writes `restored.png` + `metadata.json` to `archive/restored/<asset_id>/` -> Restoration returned
 - **Re-colorize (run)**: `POST /restorations/<asset_id>/rerun` -> same source, new params -> overwrites the rendition
 - **List restorations**: `GET /restorations` -> service reads each `metadata.json` under `archive/restored/`
 - **Compare/preview**: `GET /restorations/<asset_id>/preview?target=source|rendition` -> presigned URL -> browser renders side by side
@@ -127,7 +132,8 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security documentation.
 
 - Restoration router: `services/api/app/runtime/restorations.py`
 - Restoration business logic: `services/api/app/service/restoration.py`
-- DeOldify adapter (model access): `services/api/app/repo/deoldify_repo.py` (+ `deoldify_runtime.py`)
+- DeOldify HTTP adapter (model access): `services/api/app/repo/deoldify_repo.py`
+- DeOldify colorization service: `infra/deoldify/server.py` (+ `Dockerfile`, `requirements.txt`)
 - B2 data access (repo layer): `services/api/app/repo/b2_client.py`
 - Pydantic models: `services/api/app/types/` (`restoration.py`, `files.py`, `upload.py`, `stats.py`)
 - Config (pydantic-settings): `services/api/app/config/settings.py`

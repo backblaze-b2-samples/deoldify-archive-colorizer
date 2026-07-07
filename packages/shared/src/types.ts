@@ -60,7 +60,7 @@ export interface UploadStats {
 
 // --- Restoration (DeOldify colorizer primary entity) ---
 
-export type ModelVariant = "artistic" | "stable" | "video";
+export type ModelVariant = "artistic" | "stable";
 export type RenderQuality = "draft" | "balanced" | "high";
 export type RestorationStatus = "completed" | "failed";
 

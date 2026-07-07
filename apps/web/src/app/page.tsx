@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Palette } from "lucide-react";
+import { Palette, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { StatsCards } from "@/components/dashboard/stats-cards";
@@ -17,12 +17,23 @@ export default function DashboardPage() {
             Backblaze B2.
           </p>
         </div>
-        <Button asChild size="sm" className="h-8">
-          <Link href="/restorations/new">
-            <Palette className="h-3.5 w-3.5" />
-            New restoration
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Step 1 — ingest a B&W original. Kept as prominent as the colorize
+              CTA so the first step is as discoverable as the last. */}
+          <Button asChild size="sm" className="h-8">
+            <Link href="/upload">
+              <Upload className="h-3.5 w-3.5" />
+              Ingest original
+            </Link>
+          </Button>
+          {/* Step 2 — colorize an ingested original. */}
+          <Button asChild size="sm" variant="outline" className="h-8">
+            <Link href="/restorations/new">
+              <Palette className="h-3.5 w-3.5" />
+              New restoration
+            </Link>
+          </Button>
+        </div>
       </div>
       <StatsCards />
       <div className="grid gap-6 lg:grid-cols-2">

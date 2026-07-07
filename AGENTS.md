@@ -17,17 +17,18 @@ apps/web/          Next.js 16 frontend (App Router, Tailwind v4, shadcn/ui)
   src/components/restorations/ Restoration UI (form, library, detail, thumbnails)
   src/components/dashboard/    Archival data-growth metrics
 services/api/      FastAPI backend (layered: types/config/repo/service/runtime)
-  app/repo/deoldify_repo.py    DeOldify adapter — ONLY place deoldify/torch/fastai import
-  app/repo/deoldify_runtime.py Heavy model invocation + MP4 encode (lazily imported)
+  app/repo/deoldify_repo.py    DeOldify adapter — httpx client to the colorizer container
   app/repo/b2_client.py        boto3 S3 client (custom UA, region->endpoint)
   app/service/restoration.py   Restoration lifecycle business logic
   app/service/restore_pass.py  Denoise/sharpen post-process (Pillow, pure)
   app/runtime/restorations.py  Restoration router
-  requirements-ml.txt          PINNED DeOldify/torch/fastai stack (separate install)
 packages/shared/   Shared TypeScript types
 docs/              System of record (features, workflows, security, reliability)
 docs/exec-plans/   Execution plans and tech debt tracker
+infra/deoldify/    DeOldify colorization microservice (Dockerfile + server.py) —
+                   legacy fastai-v1/torch-1.11 stack, native linux/arm64, CPU
 infra/railway/     Deployment config
+docker-compose.yml Root compose — the `deoldify` colorization service
 ```
 
 ## 2. App surfaces (kept starter scaffolding + this app's features)
@@ -50,12 +51,12 @@ infra/railway/     Deployment config
 
 - No backward imports across layers
 - No `boto3` outside `repo/`
-- **No `deoldify` / `torch` / `fastai` / `cv2` / `imageio_ffmpeg` outside `repo/`** — the DeOldify model stack is an external SDK with the same containment invariant as boto3. `app/repo/deoldify_repo.py` is the only adapter; its heavy imports are deferred into functions so importing the module stays cheap and network-free (relied on by the no-network guard test).
+- **No `deoldify` / `torch` / `fastai` / `imageio_ffmpeg` imported ANYWHERE in this API** — the DeOldify model stack (fastai-v1/torch-1.11) is irreconcilable with this API's modern environment, so it runs in the `infra/deoldify/` container. `app/repo/deoldify_repo.py` is the only seam that talks to it, over HTTP via `httpx` (no model imports at all). Enforced by `test_structure.py::test_deoldify_stack_not_imported_anywhere`. (`cv2` is allowed for a light restore pass, though the current pass uses only Pillow.)
 - No business logic in route handlers (`runtime/`)
 - All external APIs/models wrapped in `repo/` adapters
 - All request/response data validated at boundary (Pydantic models)
 - No shared mutable state across layers
-- **Device selection is runtime auto-detect** (CUDA → Apple MPS → CPU, defaults to CPU). Never hard-require a GPU. DeOldify's MPS support is weak, so MPS is best-effort and falls back CUDA → CPU.
+- **Colorization runs on CPU in the container** (no GPU passthrough; DeOldify's legacy stack has no usable MPS path). The API's `detect_device` reports the container's device via its `/health` probe and never hard-requires a GPU — if the service is unreachable it still reports CPU rather than raising.
 
 **Frontend**: shadcn/ui components in `src/components/ui/` are generated — never modify them.
 
@@ -96,8 +97,9 @@ An async job queue is out of scope — see `docs/exec-plans/tech-debt-tracker.md
 | Rule | Enforced by |
 |------|-------------|
 | No backward imports | `tests/test_structure.py::test_no_backward_imports` |
-| No boto3 / DeOldify / torch / fastai / cv2 outside repo/ | `tests/test_structure.py::test_boto3_only_in_repo` |
-| DeOldify adapter import stays network-free + stable API | `tests/test_deoldify_repo.py` |
+| No boto3 outside repo/ | `tests/test_structure.py::test_boto3_only_in_repo` |
+| DeOldify/torch/fastai imported nowhere in the API (container-only) | `tests/test_structure.py::test_deoldify_stack_not_imported_anywhere` |
+| DeOldify adapter import stays SDK-free + stable HTTP contract | `tests/test_deoldify_repo.py` |
 | File size < 300 lines | `tests/test_structure.py::test_file_size_limits` |
 | All layers exist | `tests/test_structure.py::test_all_layers_exist` |
 | No bare print() | `ruff` rule T20 |
@@ -109,9 +111,11 @@ An async job queue is out of scope — see `docs/exec-plans/tech-debt-tracker.md
 
 ```bash
 # Run
-pnpm dev               # start both frontend and backend
+pnpm dev               # frontend + backend (host) + colorizer (Docker)
 pnpm dev:web           # frontend only
-pnpm dev:api           # backend only
+pnpm dev:api           # backend only (host uvicorn)
+pnpm dev:deoldify      # colorization container only (docker compose up --build)
+pnpm dev:deoldify:down # stop the colorization container
 
 # Test & Lint
 pnpm lint              # frontend lint (eslint)

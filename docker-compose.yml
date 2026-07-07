@@ -1,0 +1,26 @@
+# DeOldify colorization microservice.
+#
+# The legacy fastai-v1 / torch-1.11 stack runs here in a native linux/arm64
+# container, isolated from the modern Python-3.11 API. The API talks to it over
+# HTTP (DEOLDIFY_SERVICE_URL). This service is stateless and credential-free — it
+# never touches B2, so no B2_* env is passed in.
+#
+# Model weights + the resnet backbone are baked into the image at build time, so
+# no volume is needed and the container is ready as soon as /health returns ok.
+#
+# `pnpm dev` builds + runs this automatically. Standalone:
+#   docker compose up --build deoldify
+services:
+  deoldify:
+    build:
+      context: ./infra/deoldify
+    platform: linux/arm64            # torch amd64 wheels SIGILL under QEMU
+    ports:
+      - "${DEOLDIFY_SERVICE_PORT:-8137}:8137"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8137/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

@@ -1,0 +1,41 @@
+# DeOldify colorization microservice — legacy ML stack (Python 3.9, CPU).
+#
+# The three packages below are installed in DEDICATED, ORDERED Dockerfile layers
+# BEFORE this file — a flat requirements.txt cannot express their constraints:
+#
+#   numpy==1.23.5 / Pillow==9.5.0   -> base layer, pinned again in constraints.txt
+#   torch==1.11.0 torchvision==0.12.0 -> from the CPU wheel index (aarch64 cp39)
+#   fastai==1.0.60                  -> installed with --no-deps (its hard pin on
+#                                      spacy<2.1 has no aarch64/cp39 wheels; the
+#                                      DeOldify image path is vision-only and
+#                                      never imports fastai.text/spacy)
+#
+# Everything here is installed with `-c constraints.txt` so numpy stays < 2.
+# See the Dockerfile for the exact ordering.
+
+# --- fastai v1 vision-path deps (hand-picked; fastai was installed --no-deps) ---
+pandas==1.5.3
+scipy==1.10.1
+matplotlib==3.7.5
+numexpr==2.8.6
+fastprogress==0.2.6
+beautifulsoup4
+nvidia-ml-py3
+packaging
+PyYAML
+requests
+
+# --- DeOldify image I/O ---
+opencv-python-headless==4.9.0.80
+Pillow==9.5.0
+numpy==1.23.5
+ffmpeg-python==0.2.0
+ipython==8.18.1
+# DeOldify's visualize.py imports yt_dlp at module load (its video-download
+# helper), even on the image path — a hard import dep for get_image_colorizer.
+yt-dlp
+
+# --- HTTP server ---
+fastapi
+uvicorn[standard]
+python-multipart

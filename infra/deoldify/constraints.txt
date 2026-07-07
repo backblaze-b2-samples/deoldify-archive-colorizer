@@ -1,0 +1,9 @@
+# pip constraints applied (-c) to EVERY install after torch in the Dockerfile.
+#
+# torch 1.11 and matplotlib were compiled against the numpy 1.x C-ABI. Without
+# this constraint, opencv-python's unconstrained resolve silently UPGRADES numpy
+# to 2.x, which then breaks torch with "numpy.core.multiarray failed to import"
+# / "_ARRAY_API not found". Pillow<10 keeps Image.ANTIALIAS, which fastai-v1 /
+# DeOldify still call.
+numpy==1.23.5
+Pillow==9.5.0

@@ -8,9 +8,11 @@ boto3>=1.35.0
 python-magic>=0.4.27
 Pillow>=11.0.0
 PyPDF2>=3.0.0
+# HTTP client for the DeOldify colorization microservice (production path — the
+# repo adapter POSTs image bytes to it). Also used by the test client.
+httpx>=0.27.0
 
 # Dev / quality
 ruff>=0.8.0
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
-httpx>=0.27.0

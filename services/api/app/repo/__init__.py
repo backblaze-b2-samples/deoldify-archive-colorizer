@@ -9,17 +9,17 @@ from app.repo.b2_client import (
     upload_file,
 )
 from app.repo.deoldify_repo import (
+    clamp_render_factor,
     colorize_image_bytes,
     detect_device,
-    encode_frames_to_mp4,
 )
 
 __all__ = [
     "check_connectivity",
+    "clamp_render_factor",
     "colorize_image_bytes",
     "delete_file",
     "detect_device",
-    "encode_frames_to_mp4",
     "get_file_metadata",
     "get_object_bytes",
     "get_presigned_url",

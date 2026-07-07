@@ -14,8 +14,14 @@ import { Upload } from "lucide-react";
 import { ApiError } from "@/lib/api-client";
 import { useCreateRestoration, useSourceOriginals } from "@/lib/queries";
 import { RestorationForm } from "./restoration-form";
+import { ElapsedTimer } from "./elapsed-timer";
 
-export function CreateRestoration() {
+export function CreateRestoration({
+  initialSourceKey,
+}: {
+  // Pre-selects a just-uploaded original (from /restorations/new?source=…).
+  initialSourceKey?: string;
+}) {
   const router = useRouter();
   const { data: sources = [], isLoading, error, refetch } = useSourceOriginals();
   const createMutation = useCreateRestoration();
@@ -33,6 +39,7 @@ export function CreateRestoration() {
               Running the NoGAN model locally. A still takes seconds to a few
               minutes on CPU.
             </p>
+            <ElapsedTimer className="text-sm text-muted-foreground" />
           </div>
         ) : isLoading ? (
           <div className="space-y-4">
@@ -60,6 +67,7 @@ export function CreateRestoration() {
           <RestorationForm
             mode="create"
             sources={sources}
+            initialSourceKey={initialSourceKey}
             submitLabel="Colorize"
             submitting={createMutation.isPending}
             onSubmit={(values) =>

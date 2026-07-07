@@ -7,6 +7,8 @@
     "dev": "sh scripts/dev.sh",
     "dev:web": "pnpm --filter @deoldify-archive-colorizer/web dev",
     "dev:api": "cd services/api && .venv/bin/uvicorn main:app --reload --port ${API_PORT:-8000}",
+    "dev:deoldify": "docker compose up --build deoldify",
+    "dev:deoldify:down": "docker compose down",
     "build": "pnpm --filter @deoldify-archive-colorizer/web build",
     "typecheck": "pnpm --filter @deoldify-archive-colorizer/web typecheck",
     "lint": "pnpm --filter @deoldify-archive-colorizer/web lint",

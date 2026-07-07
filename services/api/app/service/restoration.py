@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 
 from app.config import settings
 from app.repo import (
+    clamp_render_factor,
     colorize_image_bytes,
     delete_file,
     detect_device,
@@ -34,7 +35,10 @@ from app.types.formatting import humanize_bytes
 logger = logging.getLogger(__name__)
 
 MODEL_VERSION = "DeOldify NoGAN (jantic/DeOldify)"
-_RENDER_FACTORS = {"draft": 21, "balanced": 30, "high": 35}
+# Render-factor per quality preset. Bounded so no preset OOM-kills the colorizer
+# container on the default ~4 GiB budget (render_factor 28+ exceeds it). See
+# docs/RELIABILITY.md; keep in lockstep with deoldify_repo.RENDER_PRESETS.
+_RENDER_FACTORS = {"draft": 16, "balanced": 22, "high": 24}
 _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
 
 
@@ -83,10 +87,9 @@ def list_source_originals() -> list[dict]:
 
 
 def _run_colorization(
-    source_bytes: bytes, params: RestorationParams
-) -> tuple[bytes, int, str]:
-    """Colorize + optional restore pass. Returns (png_bytes, render_factor, device)."""
-    render_factor = _RENDER_FACTORS[params.render_quality]
+    source_bytes: bytes, params: RestorationParams, render_factor: int
+) -> tuple[bytes, str]:
+    """Colorize at the given (already variant-clamped) render_factor; returns (bytes, device)."""
     device = detect_device()
     colorized = colorize_image_bytes(
         source_bytes,
@@ -96,7 +99,7 @@ def _run_colorization(
     restored = apply_restore_pass(
         colorized, denoise=params.denoise, sharpen=params.sharpen
     )
-    return restored, render_factor, device.label
+    return restored, device.label
 
 
 def _persist(
@@ -173,9 +176,13 @@ def create_restoration(source_key: str, params: RestorationParams) -> Restoratio
     asset_id = asset_id_for(source_key)
     created_at = datetime.now(UTC)
     source_bytes = get_object_bytes(source_key)
-
+    # Effective render_factor = preset clamped to the variant's memory ceiling,
+    # resolved ONCE before the render so what we send and what we record match.
+    render_factor = clamp_render_factor(
+        params.model_variant, _RENDER_FACTORS[params.render_quality]
+    )
     try:
-        rendition, render_factor, device = _run_colorization(source_bytes, params)
+        rendition, device = _run_colorization(source_bytes, params, render_factor)
         return _persist(
             asset_id=asset_id,
             source_key=source_key,
@@ -194,7 +201,7 @@ def create_restoration(source_key: str, params: RestorationParams) -> Restoratio
             asset_id=asset_id,
             source_key=source_key,
             rendition_bytes=b"",
-            render_factor=_RENDER_FACTORS[params.render_quality],
+            render_factor=render_factor,
             device=detect_device().label,
             params=params,
             status="failed",

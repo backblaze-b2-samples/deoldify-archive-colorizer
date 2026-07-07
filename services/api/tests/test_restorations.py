@@ -67,11 +67,42 @@ def test_create_writes_rendition_and_metadata(monkeypatch):
     assert record.rendition_key.endswith("restored.png")
     assert record.metadata_key.endswith("metadata.json")
     assert record.device == "cpu"
-    assert record.render_factor == 30  # balanced
+    assert record.render_factor == 22  # balanced
     # Both the rendition and the metadata.json were written to B2.
     assert record.rendition_key in uploaded
     assert record.metadata_key in uploaded
     assert uploaded[record.metadata_key][1] == "application/json"
+
+
+def test_stable_high_render_factor_is_capped_in_call_and_provenance(monkeypatch):
+    uploaded: dict = {}
+    _patch_happy_path(monkeypatch, uploaded)
+
+    captured: dict = {}
+
+    def _capture_colorize(b, **kw):
+        captured["render_factor"] = kw.get("render_factor")
+        return b"fake-color-png"
+
+    monkeypatch.setattr(svc, "colorize_image_bytes", _capture_colorize)
+
+    # stable + high (preset 24) must be clamped to 22 — the value SENT to the
+    # colorizer and the value RECORDED in provenance must both be the capped 22,
+    # never the raw 24 that OOM-kills the resnet101 model on the CPU container.
+    stable = svc.create_restoration(
+        "archive/originals/scan.png",
+        RestorationParams(model_variant="stable", render_quality="high"),
+    )
+    assert captured["render_factor"] == 22
+    assert stable.render_factor == 22
+
+    # artistic + high still renders (and records) the full 24 — it fits in memory.
+    artistic = svc.create_restoration(
+        "archive/originals/scan.png",
+        RestorationParams(model_variant="artistic", render_quality="high"),
+    )
+    assert captured["render_factor"] == 24
+    assert artistic.render_factor == 24
 
 
 def test_create_rejects_source_outside_originals(monkeypatch):

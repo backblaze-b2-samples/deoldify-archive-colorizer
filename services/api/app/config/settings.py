@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     originals_prefix: str = "archive/originals/"
     restored_prefix: str = "archive/restored/"
 
-    # Where DeOldify model weights are cached at runtime (gitignored).
-    model_weights_dir: str = "models"
+    # DeOldify colorization microservice (Docker, native linux/arm64). The
+    # legacy fastai-v1/torch-1.11 stack runs there, not in this process. The
+    # repo adapter POSTs image bytes to {deoldify_service_url}/colorize.
+    deoldify_service_url: str = "http://localhost:8137"
 
     # Small durable counters (downloads, etc). Point at a persistent
     # volume in production if you care about surviving restarts.

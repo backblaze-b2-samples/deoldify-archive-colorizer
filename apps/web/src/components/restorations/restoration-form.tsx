@@ -32,7 +32,7 @@ import type {
 // is no autofill button. Mirrors settings-form.tsx.
 const schema = z.object({
   source_key: z.string().min(1, "Pick a source original"),
-  model_variant: z.enum(["artistic", "stable", "video"]),
+  model_variant: z.enum(["artistic", "stable"]),
   render_quality: z.enum(["draft", "balanced", "high"]),
   denoise: z.boolean(),
   sharpen: z.boolean(),
@@ -56,6 +56,9 @@ interface RestorationFormProps {
   sources?: SourceOriginal[];
   initialParams?: RestorationParams;
   fixedSourceKey?: string;
+  // In create mode, pre-selects a source in the picker (e.g. an original the
+  // user just uploaded, passed via /restorations/new?source=…). Still editable.
+  initialSourceKey?: string;
   submitting?: boolean;
   submitLabel: string;
   onSubmit: (values: RestorationFormValues) => void;
@@ -66,6 +69,7 @@ export function RestorationForm({
   sources = [],
   initialParams,
   fixedSourceKey,
+  initialSourceKey,
   submitting = false,
   submitLabel,
   onSubmit,
@@ -76,7 +80,7 @@ export function RestorationForm({
     defaultValues: {
       ...CREATE_DEFAULTS,
       ...(initialParams ?? {}),
-      source_key: fixedSourceKey ?? "",
+      source_key: fixedSourceKey ?? initialSourceKey ?? "",
     },
   });
 
@@ -129,7 +133,6 @@ export function RestorationForm({
                 <SelectContent>
                   <SelectItem value="artistic">Artistic (image)</SelectItem>
                   <SelectItem value="stable">Stable (image)</SelectItem>
-                  <SelectItem value="video">Video (clips)</SelectItem>
                 </SelectContent>
               </Select>
               {isCreate && (
@@ -155,11 +158,9 @@ export function RestorationForm({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="draft">Draft (render factor 21)</SelectItem>
-                  <SelectItem value="balanced">
-                    Balanced (render factor 30)
-                  </SelectItem>
-                  <SelectItem value="high">High (render factor 35)</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="balanced">Balanced</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
                 </SelectContent>
               </Select>
               {isCreate && (

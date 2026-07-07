@@ -3,8 +3,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# Finite-option fields the UI surfaces as selectors/switches.
-ModelVariant = Literal["artistic", "stable", "video"]
+# Finite-option fields the UI surfaces as selectors/switches. Only the still-
+# image variants are supported; the "video" model is not exposed (this build
+# colorizes lone stills, not frames), so provenance never records it.
+ModelVariant = Literal["artistic", "stable"]
 RenderQuality = Literal["draft", "balanced", "high"]
 RestorationStatus = Literal["completed", "failed"]
 

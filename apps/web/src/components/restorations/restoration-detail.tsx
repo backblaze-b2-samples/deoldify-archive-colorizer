@@ -35,6 +35,7 @@ import {
 } from "@/lib/queries";
 import { RestorationThumb } from "./restoration-thumb";
 import { RestorationForm } from "./restoration-form";
+import { ElapsedTimer } from "./elapsed-timer";
 import type { Restoration } from "@deoldify-archive-colorizer/shared";
 
 function MetaRow({ label, value }: { label: string; value: string }) {
@@ -176,6 +177,7 @@ export function RestorationDetail({ assetId }: { assetId: string }) {
           {rerun.isPending ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <GeneratingLoader size="lg" label="Re-colorizing..." />
+              <ElapsedTimer className="text-sm text-muted-foreground" />
             </div>
           ) : (
             <RestorationForm

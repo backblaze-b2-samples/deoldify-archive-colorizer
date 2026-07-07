@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Inbox } from "lucide-react";
+import { ArrowRight, Inbox, Upload } from "lucide-react";
 import {
   Card,
   CardAction,
@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -56,7 +57,15 @@ export function RecentUploadsTable() {
           <EmptyState
             icon={Inbox}
             title="No restorations yet"
-            description="Colorize an ingested original to get started."
+            description="Start by ingesting a black-and-white original, then colorize it."
+            action={
+              <Button asChild size="sm">
+                <Link href="/upload">
+                  <Upload aria-hidden className="h-3.5 w-3.5" />
+                  Ingest original
+                </Link>
+              </Button>
+            }
           />
         ) : (
           <Table className="table-fixed">

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import {
   CheckCircle2,
   FileIcon,
   Loader2,
+  Palette,
   RotateCcw,
   XCircle,
 } from "lucide-react";
@@ -19,6 +21,9 @@ export interface UploadItem {
   status: FileStatus;
   error?: string;
   retryable?: boolean;
+  // B2 key of the stored original once uploaded — powers the "Colorize" CTA
+  // that chains ingest straight into a new restoration.
+  sourceKey?: string;
 }
 
 interface UploadProgressProps {
@@ -121,6 +126,23 @@ export function UploadProgress({
                       Retry
                     </Button>
                   )}
+                {item.status === "complete" && item.sourceKey && (
+                  <Button
+                    asChild
+                    aria-label={`Colorize ${item.file.name}`}
+                    className="h-8 gap-1.5 px-2"
+                    size="sm"
+                  >
+                    <Link
+                      href={`/restorations/new?source=${encodeURIComponent(
+                        item.sourceKey
+                      )}`}
+                    >
+                      <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+                      Colorize
+                    </Link>
+                  </Button>
+                )}
               </div>
             </div>
             {item.status === "uploading" && (

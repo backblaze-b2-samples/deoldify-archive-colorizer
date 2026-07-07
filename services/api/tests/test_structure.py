@@ -65,30 +65,33 @@ def test_no_backward_imports():
     assert violations == [], "Backward import violations:\n" + "\n".join(violations)
 
 
-# External SDKs that must stay confined to the repo/ layer. boto3/botocore is
-# the storage SDK; deoldify/torch/fastai/cv2/imageio_ffmpeg are the colorization
-# model stack. Same containment invariant: service/runtime never import them.
-CONTAINED_SDK_PREFIXES = (
-    "boto3",
-    "botocore",
+# boto3/botocore is the storage SDK — confined to the repo/ layer (b2_client).
+STORAGE_SDK_PREFIXES = ("boto3", "botocore")
+
+# The DeOldify model stack (fastai-v1 / torch-1.11 / deoldify) is irreconcilable
+# with this API's modern env, so it runs in the infra/deoldify/ container. The
+# architectural invariant is therefore stronger than mere layer containment:
+# these must NOT be imported ANYWHERE in this API, including repo/. The adapter
+# in repo/deoldify_repo.py talks to the container over HTTP (httpx) only.
+# cv2 is intentionally NOT banned — the light restore pass may use it (though it
+# currently uses only Pillow).
+MODEL_STACK_PREFIXES = (
     "deoldify",
     "torch",
     "torchvision",
     "fastai",
-    "cv2",
     "imageio_ffmpeg",
 )
 
 
-def _is_contained_sdk(module: str) -> bool:
+def _matches_prefix(module: str, prefixes: tuple[str, ...]) -> bool:
     return any(
-        module == prefix or module.startswith(prefix + ".")
-        for prefix in CONTAINED_SDK_PREFIXES
+        module == prefix or module.startswith(prefix + ".") for prefix in prefixes
     )
 
 
 def test_boto3_only_in_repo():
-    """Verify boto3 + the DeOldify model stack are only imported in app/repo/."""
+    """Verify boto3/botocore are only imported in app/repo/ (storage SDK)."""
     violations = []
     for layer in LAYER_ORDER:
         if layer == "repo":
@@ -98,12 +101,33 @@ def test_boto3_only_in_repo():
             continue
         for pyfile in _get_python_files(layer_dir):
             for imp in _get_imports(pyfile):
-                if _is_contained_sdk(imp):
+                if _matches_prefix(imp, STORAGE_SDK_PREFIXES):
                     rel = pyfile.relative_to(APP_ROOT.parent)
                     violations.append(
-                        f"{rel}: external SDK '{imp}' imported outside repo/"
+                        f"{rel}: storage SDK '{imp}' imported outside repo/"
                     )
     assert violations == [], "SDK boundary violations:\n" + "\n".join(violations)
+
+
+def test_deoldify_stack_not_imported_anywhere():
+    """The DeOldify model stack must live only in the container, never in this API.
+
+    Enforces the two-container split: torch/fastai/deoldify are imported nowhere
+    under app/ (not even repo/). The repo adapter is an HTTP client to the
+    infra/deoldify/ colorization service instead.
+    """
+    violations = []
+    for pyfile in _get_python_files(APP_ROOT):
+        for imp in _get_imports(pyfile):
+            if _matches_prefix(imp, MODEL_STACK_PREFIXES):
+                rel = pyfile.relative_to(APP_ROOT.parent)
+                violations.append(
+                    f"{rel}: model-stack import '{imp}' — must live only in "
+                    "infra/deoldify/"
+                )
+    assert violations == [], "Model-stack boundary violations:\n" + "\n".join(
+        violations
+    )
 
 
 def test_file_size_limits():
