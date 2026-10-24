@@ -6,4 +6,4 @@
 # / "_ARRAY_API not found". Pillow<10 keeps Image.ANTIALIAS, which fastai-v1 /
 # DeOldify still call.
 numpy==1.23.5
-Pillow==9.5.0
+Pillow==12.3.0
